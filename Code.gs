@@ -91,6 +91,7 @@ function scanSentEmails(emailAddress, dateRange) {
     // Initialize totals
     var totals = {
       sessionHours: 0,
+      scheduledHours: 0,
       softPledges: 0,
       hardPledges: 0,
       estimatedPledges: 0,
@@ -116,6 +117,7 @@ function scanSentEmails(emailAddress, dateRange) {
         if (metrics) {
           emailsWithMetrics++;
           totals.sessionHours += metrics.sessionHours || 0;
+          totals.scheduledHours += metrics.scheduledHours || 0;
           totals.softPledges += metrics.softPledges || 0;
           totals.hardPledges += metrics.hardPledges || 0;
           totals.estimatedPledges += metrics.estimatedPledges || 0;
@@ -171,45 +173,58 @@ function parseEmailMetrics(emailBody) {
 
   // Pattern for "Session length: X hours" or "Session length: X hrs"
   // Now handles: "2 hours", "2.5 hours", "2hrs", "2 hours (2hrs)", etc.
-  var sessionHours = extractDecimal(normalizedBody, /Session length:\s*(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr)\b/i);
-  if (sessionHours !== null) {
-    metrics.sessionHours = sessionHours;
+  var sessionLineMatch = normalizedBody.match(/Session length:\s*([^\n\r]+)/i);
+  if (sessionLineMatch) {
+    var sessionLine = sessionLineMatch[1];
+    var completedHours = extractDecimal(sessionLine, /(\d+(?:\.\d+)?)/);
+    if (completedHours !== null) {
+      metrics.sessionHours = completedHours;
+    }
+    var scheduledHours = extractDecimal(sessionLine, /\((?:[^)]*?)(\d+(?:\.\d+)?)/);
+    if (scheduledHours !== null) {
+      metrics.scheduledHours = scheduledHours;
+    }
+  } else {
+    var sessionHours = extractDecimal(normalizedBody, /Session length:\s*(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr)\b/i);
+    if (sessionHours !== null) {
+      metrics.sessionHours = sessionHours;
+    }
   }
 
   // Pattern for "Total in soft pledges: $XXX"
   // Now handles variations like "Soft pledges: $250", "$250*", "$250* some note", etc.
-  var softPledges = extractDecimal(normalizedBody, /(?:Total\s+(?:in\s+)?)?soft pledges:\s*\$?(\d+(?:,\d{3})*(?:\.\d+)?)/i);
+  var softPledges = extractDecimal(normalizedBody, /(?:Total\s+(?:in\s+)?)?soft pledges:[^0-9$]*\$?(\d+(?:,\d{3})*(?:\.\d+)?)/i);
   if (softPledges !== null) {
     metrics.softPledges = softPledges;
   }
 
   // Pattern for "Total in hard pledges: $XXX"
-  var hardPledges = extractDecimal(normalizedBody, /(?:Total\s+(?:in\s+)?)?hard pledges:\s*\$?(\d+(?:,\d{3})*(?:\.\d+)?)/i);
+  var hardPledges = extractDecimal(normalizedBody, /(?:Total\s+(?:in\s+)?)?hard pledges:[^0-9$]*\$?(\d+(?:,\d{3})*(?:\.\d+)?)/i);
   if (hardPledges !== null) {
     metrics.hardPledges = hardPledges;
   }
 
   // Pattern for "Total estimated pledges: $XXX"
-  var estimatedPledges = extractDecimal(normalizedBody, /(?:Total\s+)?estimated pledges:\s*\$?(\d+(?:,\d{3})*(?:\.\d+)?)/i);
+  var estimatedPledges = extractDecimal(normalizedBody, /(?:Total\s+)?estimated pledges:[^0-9$]*\$?(\d+(?:,\d{3})*(?:\.\d+)?)/i);
   if (estimatedPledges !== null) {
     metrics.estimatedPledges = estimatedPledges;
   }
 
   // Pattern for "Total number of pledges: X"
   // Now handles asterisks and text after: "3*", "3* two of these...", etc.
-  var pledgeCount = extractInteger(normalizedBody, /(?:Total\s+)?number of pledges:\s*(\d+(?:,\d{3})*)/i);
+  var pledgeCount = extractInteger(normalizedBody, /(?:Total\s+)?number of pledges:[^0-9]*(\d+(?:,\d{3})*)/i);
   if (pledgeCount !== null) {
     metrics.numberOfPledges = pledgeCount;
   }
 
   // Pattern for "Number of calls: X"
-  var calls = extractInteger(normalizedBody, /(?:Number of calls|Calls):\s*(\d+(?:,\d{3})*)/i);
+  var calls = extractInteger(normalizedBody, /(?:Number of calls|Calls):[^0-9]*(\d+(?:,\d{3})*)/i);
   if (calls !== null) {
     metrics.numberOfCalls = calls;
   }
 
   // Pattern for "Number of pickups: X"
-  var pickups = extractInteger(normalizedBody, /(?:Number of pickups|Pickups):\s*(\d+(?:,\d{3})*)/i);
+  var pickups = extractInteger(normalizedBody, /(?:Number of pickups|Pickups):[^0-9]*(\d+(?:,\d{3})*)/i);
   if (pickups !== null) {
     metrics.numberOfPickups = pickups;
   }
@@ -308,6 +323,10 @@ function displayResults(sheet, emailAddress, dateRange, emailCount, emailsWithMe
 
   sheet.getRange('A' + row).setValue('Total Session Hours:');
   sheet.getRange('B' + row).setValue(totals.sessionHours);
+  row++;
+
+  sheet.getRange('A' + row).setValue('Total Scheduled Hours:');
+  sheet.getRange('B' + row).setValue(totals.scheduledHours);
   row++;
 
   sheet.getRange('A' + row).setValue('Total Soft Pledges:');
