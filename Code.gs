@@ -10,8 +10,54 @@ function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('Call Time Scanner')
     .addItem('Scan Sent Emails', 'showEmailScannerDialog')
+    .addItem('Show Sample Email', 'showSampleEmail')
     .addItem('Clear Results', 'clearResults')
     .addToUi();
+}
+
+/**
+ * Shows a sample of the most recent email for debugging
+ */
+function showSampleEmail() {
+  var ui = SpreadsheetApp.getUi();
+
+  // Prompt for email address
+  var response = ui.prompt('Enter the recipient email address to check:');
+
+  if (response.getSelectedButton() == ui.Button.OK) {
+    var emailAddress = response.getResponseText();
+    var searchQuery = 'to:' + emailAddress + ' in:sent';
+    var threads = GmailApp.search(searchQuery, 0, 1);
+
+    if (threads.length > 0) {
+      var message = threads[0].getMessages()[0];
+      var body = message.getPlainBody();
+      var subject = message.getSubject();
+      var date = message.getDate();
+
+      // Show first 2000 characters in a dialog
+      var preview = 'Subject: ' + subject + '\n';
+      preview += 'Date: ' + date + '\n';
+      preview += '---\n';
+      preview += body.substring(0, 2000);
+
+      if (body.length > 2000) {
+        preview += '\n\n... (truncated, see full text in logs)';
+      }
+
+      // Log the full email
+      Logger.log('=== FULL EMAIL CONTENT ===');
+      Logger.log('Subject: ' + subject);
+      Logger.log('Date: ' + date);
+      Logger.log('Body:\n' + body);
+      Logger.log('=== END EMAIL ===');
+
+      ui.alert('Most Recent Email Preview', preview, ui.ButtonSet.OK);
+      ui.alert('Full email logged', 'The complete email content has been logged. Go to Extensions > Apps Script, then View > Executions to see the logs.', ui.ButtonSet.OK);
+    } else {
+      ui.alert('No emails found to: ' + emailAddress);
+    }
+  }
 }
 
 /**
@@ -40,6 +86,7 @@ function scanSentEmails(emailAddress, dateRange) {
     // Search for matching emails
     var threads = GmailApp.search(searchQuery);
     var totalEmails = 0;
+    var emailsWithMetrics = 0;
 
     // Initialize totals
     var totals = {
@@ -56,11 +103,18 @@ function scanSentEmails(emailAddress, dateRange) {
     threads.forEach(function(thread) {
       var messages = thread.getMessages();
       messages.forEach(function(message) {
+        totalEmails++;
         var body = message.getPlainBody();
+
+        // Log the email for debugging
+        Logger.log('Processing email from: ' + message.getDate());
+        Logger.log('Email subject: ' + message.getSubject());
+        Logger.log('First 1000 chars: ' + body.substring(0, 1000));
+
         var metrics = parseEmailMetrics(body);
 
         if (metrics) {
-          totalEmails++;
+          emailsWithMetrics++;
           totals.sessionHours += metrics.sessionHours || 0;
           totals.softPledges += metrics.softPledges || 0;
           totals.hardPledges += metrics.hardPledges || 0;
@@ -73,15 +127,16 @@ function scanSentEmails(emailAddress, dateRange) {
     });
 
     // Display results
-    displayResults(sheet, emailAddress, dateRange, totalEmails, totals);
+    displayResults(sheet, emailAddress, dateRange, totalEmails, emailsWithMetrics, totals);
 
     return {
       success: true,
-      message: 'Successfully scanned ' + totalEmails + ' emails',
+      message: 'Found ' + totalEmails + ' emails (' + emailsWithMetrics + ' with metrics)',
       totals: totals
     };
 
   } catch (error) {
+    Logger.log('Error: ' + error.toString());
     return {
       success: false,
       message: 'Error: ' + error.toString()
@@ -98,30 +153,33 @@ function parseEmailMetrics(emailBody) {
   var metrics = {};
 
   // Pattern for "Session length: X hours" or "Session length: X hrs"
+  // Now handles: "2 hours", "2.5 hours", "2hrs", "2 hours (2hrs)", etc.
   var sessionMatch = emailBody.match(/Session length:\s*(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
   if (sessionMatch) {
     metrics.sessionHours = parseFloat(sessionMatch[1]);
   }
 
   // Pattern for "Total in soft pledges: $XXX"
-  var softPledgeMatch = emailBody.match(/Total in soft pledges:\s*\$(\d+(?:,\d{3})*(?:\.\d{2})?)/i);
+  // Now handles asterisks and text after: "$250*", "$250* some note", etc.
+  var softPledgeMatch = emailBody.match(/Total in soft pledges:\s*\$(\d+(?:,\d{3})*(?:\.\d+)?)/i);
   if (softPledgeMatch) {
     metrics.softPledges = parseFloat(softPledgeMatch[1].replace(/,/g, ''));
   }
 
   // Pattern for "Total in hard pledges: $XXX"
-  var hardPledgeMatch = emailBody.match(/Total in hard pledges:\s*\$(\d+(?:,\d{3})*(?:\.\d{2})?)/i);
+  var hardPledgeMatch = emailBody.match(/Total in hard pledges:\s*\$(\d+(?:,\d{3})*(?:\.\d+)?)/i);
   if (hardPledgeMatch) {
     metrics.hardPledges = parseFloat(hardPledgeMatch[1].replace(/,/g, ''));
   }
 
   // Pattern for "Total estimated pledges: $XXX"
-  var estimatedPledgeMatch = emailBody.match(/Total estimated pledges:\s*\$(\d+(?:,\d{3})*(?:\.\d{2})?)/i);
+  var estimatedPledgeMatch = emailBody.match(/Total estimated pledges:\s*\$(\d+(?:,\d{3})*(?:\.\d+)?)/i);
   if (estimatedPledgeMatch) {
     metrics.estimatedPledges = parseFloat(estimatedPledgeMatch[1].replace(/,/g, ''));
   }
 
   // Pattern for "Total number of pledges: X"
+  // Now handles asterisks and text after: "3*", "3* two of these...", etc.
   var pledgeCountMatch = emailBody.match(/Total number of pledges:\s*(\d+)/i);
   if (pledgeCountMatch) {
     metrics.numberOfPledges = parseInt(pledgeCountMatch[1]);
@@ -137,6 +195,13 @@ function parseEmailMetrics(emailBody) {
   var pickupsMatch = emailBody.match(/Number of pickups:\s*(\d+)/i);
   if (pickupsMatch) {
     metrics.numberOfPickups = parseInt(pickupsMatch[1]);
+  }
+
+  // Debug logging - add email body snippet if no metrics found
+  if (Object.keys(metrics).length === 0) {
+    Logger.log('No metrics found in email. First 500 chars: ' + emailBody.substring(0, 500));
+  } else {
+    Logger.log('Extracted metrics: ' + JSON.stringify(metrics));
   }
 
   // Only return metrics if at least one field was found
@@ -182,9 +247,10 @@ function calculateDateString(dateRange) {
  * @param {string} emailAddress - The searched email address
  * @param {string} dateRange - The date range searched
  * @param {number} emailCount - Number of emails found
+ * @param {number} emailsWithMetrics - Number of emails with extractable metrics
  * @param {Object} totals - Calculated totals
  */
-function displayResults(sheet, emailAddress, dateRange, emailCount, totals) {
+function displayResults(sheet, emailAddress, dateRange, emailCount, emailsWithMetrics, totals) {
   // Clear previous results (start from row 1)
   sheet.clear();
 
@@ -209,6 +275,11 @@ function displayResults(sheet, emailAddress, dateRange, emailCount, totals) {
   row++;
   sheet.getRange('A' + row).setValue('Emails Found:');
   sheet.getRange('B' + row).setValue(emailCount);
+  row++;
+  sheet.getRange('A' + row).setValue('Emails With Metrics:');
+  sheet.getRange('B' + row).setValue(emailsWithMetrics);
+  if (emailsWithMetrics < emailCount) {
+    sheet.getRange('B' + row).setNote('Some emails were found but did not contain recognizable metrics. Check the Apps Script logs (View > Executions) to see email content.');
 
   // Add spacing
   row += 2;
