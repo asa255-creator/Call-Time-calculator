@@ -1,0 +1,89 @@
+EXAMPLE CALL TIME REPORT EMAIL
+================================
+
+This is an example of the email format that the Call Time Calculator can parse.
+You can use this as a template for your call time reports.
+
+---
+
+Subject: Call Time Report - [Date]
+
+Hi [Name],
+
+Session length: 2 hours (2hrs)
+
+Today we started Call Time by doing Pledge chasing doing about 10 Pledge chasing calls! We even got some replies about checks in the mail.
+
+[Your notes and observations here]
+
+Total in soft pledges: $250
+Total in hard pledges: $0
+Total estimated pledges: $250
+Total number of pledges: 3
+Number of calls: 20
+Number of pickups: 4
+
+[Additional notes]
+
+---
+
+KEY PATTERNS THE SCRIPT LOOKS FOR:
+====================================
+
+Required format (case-insensitive):
+
+✓ Session length: [NUMBER] hours
+  OR
+  Session length: [NUMBER] hrs
+
+✓ Total in soft pledges: $[NUMBER]
+
+✓ Total in hard pledges: $[NUMBER]
+
+✓ Total estimated pledges: $[NUMBER]
+
+✓ Total number of pledges: [NUMBER]
+
+✓ Number of calls: [NUMBER]
+
+✓ Number of pickups: [NUMBER]
+
+
+EXAMPLES OF VALID FORMATS:
+==========================
+
+Session length: 2 hours
+Session length: 2.5 hours
+Session length: 2 hrs
+Session length: 1.5hrs
+
+Total in soft pledges: $250
+Total in soft pledges: $1,250
+Total in soft pledges: $1250.00
+
+Total in hard pledges: $0
+Total in hard pledges: $500
+
+Total estimated pledges: $250
+Total estimated pledges: $2,500
+
+Total number of pledges: 3
+Total number of pledges: 0
+
+Number of calls: 20
+Number of calls: 35
+
+Number of pickups: 4
+Number of pickups: 12
+
+
+NOTES:
+======
+- The script is flexible - it will find these patterns anywhere in your email
+- You can include additional text, notes, and formatting
+- Numbers can include commas (e.g., $1,250) or decimals (e.g., $1250.50)
+- The patterns are case-insensitive (e.g., "Total In Soft Pledges" works too)
+- If a metric is missing from an email, the script will still process other metrics
+- You can include notes with asterisks (*) - the script will extract the number before the asterisk
+  Example: "Total number of pledges: 3* two of these I've marked down a zero dollar pledges."
+  This will extract "3"

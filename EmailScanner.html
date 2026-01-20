@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+
+    .container {
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    h2 {
+      color: #1a73e8;
+      margin-top: 0;
+      font-size: 18px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+      font-size: 14px;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+      transition: border-color 0.3s;
+    }
+
+    input[type="text"]:focus,
+    input[type="email"]:focus,
+    input[type="number"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #1a73e8;
+    }
+
+    .preset-buttons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .preset-btn {
+      background-color: #f1f3f4;
+      color: #202124;
+      padding: 8px 4px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .preset-btn:hover {
+      background-color: #e8eaed;
+      border-color: #1a73e8;
+    }
+
+    button {
+      background-color: #1a73e8;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      width: 100%;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #1557b0;
+    }
+
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 15px;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      display: none;
+    }
+
+    .status.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .status.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .status.info {
+      background-color: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+
+    .help-text {
+      font-size: 12px;
+      color: #666;
+      margin-top: 5px;
+      font-style: italic;
+    }
+
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #1a73e8;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loading {
+      display: none;
+      align-items: center;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>📧 Scan Sent Emails</h2>
+
+    <form id="scanForm" onsubmit="scanEmails(); return false;">
+      <div class="form-group">
+        <label for="emailAddress">Recipient Email Address:</label>
+        <input
+          type="email"
+          id="emailAddress"
+          name="emailAddress"
+          placeholder="example@example.com"
+          required
+        />
+        <div class="help-text">Enter the email address you sent the call time reports to</div>
+      </div>
+
+      <div class="form-group">
+        <label for="daysBack">Number of Days Back to Search:</label>
+        <input
+          type="number"
+          id="daysBack"
+          name="daysBack"
+          placeholder="Enter any number of days"
+          value="30"
+          min="1"
+          required
+        />
+        <div class="help-text">Enter ANY number of days you want to search back</div>
+        <div class="preset-buttons">
+          <button type="button" class="preset-btn" onclick="setDays(7)">7 days</button>
+          <button type="button" class="preset-btn" onclick="setDays(14)">14 days</button>
+          <button type="button" class="preset-btn" onclick="setDays(30)">30 days</button>
+          <button type="button" class="preset-btn" onclick="setDays(60)">60 days</button>
+          <button type="button" class="preset-btn" onclick="setDays(90)">90 days</button>
+          <button type="button" class="preset-btn" onclick="setDays(180)">6 months</button>
+          <button type="button" class="preset-btn" onclick="setDays(365)">1 year</button>
+          <button type="button" class="preset-btn" onclick="setDays(730)">2 years</button>
+        </div>
+      </div>
+
+      <button type="submit" id="scanButton">
+        🔍 Scan Emails
+      </button>
+    </form>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <span>Scanning emails...</span>
+    </div>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <script>
+    /**
+     * Sets the number of days in the input field
+     */
+    function setDays(days) {
+      document.getElementById('daysBack').value = days;
+    }
+
+    /**
+     * Scans emails when form is submitted
+     */
+    function scanEmails() {
+      var emailAddress = document.getElementById('emailAddress').value;
+      var daysBack = parseInt(document.getElementById('daysBack').value);
+
+      // Validate inputs
+      if (!emailAddress) {
+        showStatus('Please enter an email address', 'error');
+        return;
+      }
+
+      if (!daysBack || daysBack < 1) {
+        showStatus('Please enter a valid number of days (1 or more)', 'error');
+        return;
+      }
+
+      // Convert days to the format the backend expects (e.g., "30d")
+      var dateRange = daysBack + 'd';
+
+      // Show loading state
+      document.getElementById('scanButton').disabled = true;
+      document.getElementById('loading').style.display = 'flex';
+      document.getElementById('status').style.display = 'none';
+
+      // Call the Google Apps Script function
+      google.script.run
+        .withSuccessHandler(onSuccess)
+        .withFailureHandler(onFailure)
+        .scanSentEmails(emailAddress, dateRange);
+    }
+
+    /**
+     * Success handler
+     */
+    function onSuccess(result) {
+      document.getElementById('scanButton').disabled = false;
+      document.getElementById('loading').style.display = 'none';
+
+      if (result.success) {
+        showStatus('✓ ' + result.message + '! Check the spreadsheet for results.', 'success');
+      } else {
+        showStatus('⚠ ' + result.message, 'error');
+      }
+    }
+
+    /**
+     * Failure handler
+     */
+    function onFailure(error) {
+      document.getElementById('scanButton').disabled = false;
+      document.getElementById('loading').style.display = 'none';
+      showStatus('✗ Error: ' + error.message, 'error');
+    }
+
+    /**
+     * Shows a status message
+     */
+    function showStatus(message, type) {
+      var statusDiv = document.getElementById('status');
+      statusDiv.textContent = message;
+      statusDiv.className = 'status ' + type;
+      statusDiv.style.display = 'block';
+    }
+
+    /**
+     * Pre-fill email if there's a common recipient
+     */
+    window.onload = function() {
+      // You can set a default email here if needed
+      // document.getElementById('emailAddress').value = 'your-default@email.com';
+    };
+  </script>
+</body>
+</html>
