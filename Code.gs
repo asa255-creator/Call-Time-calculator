@@ -322,11 +322,11 @@ function displayResults(sheet, emailAddress, dateRange, emailCount, emailsWithMe
   row++;
 
   sheet.getRange('A' + row).setValue('Total Session Hours:');
-  sheet.getRange('B' + row).setValue(totals.sessionHours);
+  sheet.getRange('B' + row).setValue(totals.sessionHours).setNumberFormat('0.00');
   row++;
 
   sheet.getRange('A' + row).setValue('Total Scheduled Hours:');
-  sheet.getRange('B' + row).setValue(totals.scheduledHours);
+  sheet.getRange('B' + row).setValue(totals.scheduledHours).setNumberFormat('0.00');
   row++;
 
   sheet.getRange('A' + row).setValue('Total Soft Pledges:');
