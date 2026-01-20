@@ -280,6 +280,7 @@ function displayResults(sheet, emailAddress, dateRange, emailCount, emailsWithMe
   sheet.getRange('B' + row).setValue(emailsWithMetrics);
   if (emailsWithMetrics < emailCount) {
     sheet.getRange('B' + row).setNote('Some emails were found but did not contain recognizable metrics. Check the Apps Script logs (View > Executions) to see email content.');
+  }
 
   // Add spacing
   row += 2;
