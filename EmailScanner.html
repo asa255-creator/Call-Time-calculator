@@ -36,6 +36,7 @@
 
     input[type="text"],
     input[type="email"],
+    input[type="number"],
     select {
       width: 100%;
       padding: 10px;
@@ -48,8 +49,34 @@
 
     input[type="text"]:focus,
     input[type="email"]:focus,
+    input[type="number"]:focus,
     select:focus {
       outline: none;
+      border-color: #1a73e8;
+    }
+
+    .preset-buttons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .preset-btn {
+      background-color: #f1f3f4;
+      color: #202124;
+      padding: 8px 4px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .preset-btn:hover {
+      background-color: #e8eaed;
       border-color: #1a73e8;
     }
 
@@ -150,18 +177,27 @@
       </div>
 
       <div class="form-group">
-        <label for="dateRange">How Far Back to Search:</label>
-        <select id="dateRange" name="dateRange" required>
-          <option value="7d">Last 7 days</option>
-          <option value="14d">Last 14 days</option>
-          <option value="30d" selected>Last 30 days</option>
-          <option value="60d">Last 60 days</option>
-          <option value="90d">Last 90 days</option>
-          <option value="6m">Last 6 months</option>
-          <option value="1y">Last year</option>
-          <option value="2y">Last 2 years</option>
-        </select>
-        <div class="help-text">Select how far back to search in your sent emails</div>
+        <label for="daysBack">Number of Days Back to Search:</label>
+        <input
+          type="number"
+          id="daysBack"
+          name="daysBack"
+          placeholder="Enter any number of days"
+          value="30"
+          min="1"
+          required
+        />
+        <div class="help-text">Enter ANY number of days you want to search back</div>
+        <div class="preset-buttons">
+          <button type="button" class="preset-btn" onclick="setDays(7)">7 days</button>
+          <button type="button" class="preset-btn" onclick="setDays(14)">14 days</button>
+          <button type="button" class="preset-btn" onclick="setDays(30)">30 days</button>
+          <button type="button" class="preset-btn" onclick="setDays(60)">60 days</button>
+          <button type="button" class="preset-btn" onclick="setDays(90)">90 days</button>
+          <button type="button" class="preset-btn" onclick="setDays(180)">6 months</button>
+          <button type="button" class="preset-btn" onclick="setDays(365)">1 year</button>
+          <button type="button" class="preset-btn" onclick="setDays(730)">2 years</button>
+        </div>
       </div>
 
       <button type="submit" id="scanButton">
@@ -179,17 +215,32 @@
 
   <script>
     /**
+     * Sets the number of days in the input field
+     */
+    function setDays(days) {
+      document.getElementById('daysBack').value = days;
+    }
+
+    /**
      * Scans emails when form is submitted
      */
     function scanEmails() {
       var emailAddress = document.getElementById('emailAddress').value;
-      var dateRange = document.getElementById('dateRange').value;
+      var daysBack = parseInt(document.getElementById('daysBack').value);
 
       // Validate inputs
       if (!emailAddress) {
         showStatus('Please enter an email address', 'error');
         return;
       }
+
+      if (!daysBack || daysBack < 1) {
+        showStatus('Please enter a valid number of days (1 or more)', 'error');
+        return;
+      }
+
+      // Convert days to the format the backend expects (e.g., "30d")
+      var dateRange = daysBack + 'd';
 
       // Show loading state
       document.getElementById('scanButton').disabled = true;
