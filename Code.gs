@@ -175,7 +175,11 @@ function isSentToRecipient(message, normalizedRecipient, targetDate) {
     userEmail = '';
   }
   if (!userEmail) {
-    userEmail = GmailApp.getUserEmail();
+    try {
+      userEmail = Session.getEffectiveUser().getEmail();
+    } catch (error) {
+      userEmail = '';
+    }
   }
   if (userEmail) {
     var fromAddress = message.getFrom().toLowerCase();
