@@ -181,11 +181,13 @@ function isSentToRecipient(message, normalizedRecipient, targetDate) {
       userEmail = '';
     }
   }
+  var fromAddress = message.getFrom().toLowerCase();
   if (userEmail) {
-    var fromAddress = message.getFrom().toLowerCase();
     if (fromAddress.indexOf(userEmail.toLowerCase()) === -1) {
       return false;
     }
+  } else if (fromAddress.indexOf(normalizedRecipient) !== -1) {
+    return false;
   }
 
   var recipients = [message.getTo(), message.getCc(), message.getBcc()]
