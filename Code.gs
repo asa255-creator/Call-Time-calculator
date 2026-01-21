@@ -168,6 +168,11 @@ function isSentToRecipient(message, normalizedRecipient, targetDate) {
     return false;
   }
 
+  var subject = message.getSubject() || '';
+  if (/^\s*(re|fw|fwd)\s*:/i.test(subject)) {
+    return false;
+  }
+
   var userEmail = '';
   try {
     userEmail = Session.getActiveUser().getEmail();
