@@ -168,7 +168,15 @@ function isSentToRecipient(message, normalizedRecipient, targetDate) {
     return false;
   }
 
-  var userEmail = Session.getActiveUser().getEmail();
+  var userEmail = '';
+  try {
+    userEmail = Session.getActiveUser().getEmail();
+  } catch (error) {
+    userEmail = '';
+  }
+  if (!userEmail) {
+    userEmail = GmailApp.getUserEmail();
+  }
   if (userEmail) {
     var fromAddress = message.getFrom().toLowerCase();
     if (fromAddress.indexOf(userEmail.toLowerCase()) === -1) {
