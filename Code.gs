@@ -89,6 +89,7 @@ function scanSentEmails(emailAddress, dateRange) {
     var threads = GmailApp.search(searchQuery);
     var totalEmails = 0;
     var emailsWithMetrics = 0;
+    var emailDetails = [];
 
     // Initialize totals
     var totals = {
@@ -119,6 +120,8 @@ function scanSentEmails(emailAddress, dateRange) {
 
         var metrics = parseEmailMetrics(body);
 
+        emailDetails.push(buildEmailDetail(message, metrics));
+
         if (metrics) {
           emailsWithMetrics++;
           totals.sessionHours += metrics.sessionHours || 0;
@@ -135,6 +138,7 @@ function scanSentEmails(emailAddress, dateRange) {
 
     // Display results
     displayResults(sheet, emailAddress, dateRange, totalEmails, emailsWithMetrics, totals);
+    displayEmailDetails(emailDetails);
 
     return {
       success: true,
@@ -178,6 +182,27 @@ function isSentToRecipient(message, normalizedRecipient, targetDate) {
     .toLowerCase();
 
   return recipients.indexOf(normalizedRecipient) !== -1;
+}
+
+/**
+ * Builds a detail row for the email details sheet.
+ * @param {GmailMessage} message - The Gmail message
+ * @param {Object|null} metrics - Parsed metrics
+ * @return {Object} Row data for the details sheet
+ */
+function buildEmailDetail(message, metrics) {
+  return {
+    date: message.getDate(),
+    subject: message.getSubject(),
+    sessionHours: metrics ? (metrics.sessionHours || 0) : 0,
+    scheduledHours: metrics ? (metrics.scheduledHours || 0) : 0,
+    softPledges: metrics ? (metrics.softPledges || 0) : 0,
+    hardPledges: metrics ? (metrics.hardPledges || 0) : 0,
+    estimatedPledges: metrics ? (metrics.estimatedPledges || 0) : 0,
+    numberOfPledges: metrics ? (metrics.numberOfPledges || 0) : 0,
+    numberOfCalls: metrics ? (metrics.numberOfCalls || 0) : 0,
+    numberOfPickups: metrics ? (metrics.numberOfPickups || 0) : 0
+  };
 }
 
 /**
@@ -438,6 +463,94 @@ function displayResults(sheet, emailAddress, dateRange, emailCount, emailsWithMe
   row += 2;
   sheet.getRange('A' + row).setValue('Last Updated:');
   sheet.getRange('B' + row).setValue(new Date().toLocaleString());
+}
+
+/**
+ * Displays per-email details in a secondary sheet.
+ * @param {Array} emailDetails - Array of per-email metrics
+ */
+function displayEmailDetails(emailDetails) {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetName = 'Email Details';
+  var detailsSheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!detailsSheet) {
+    detailsSheet = spreadsheet.insertSheet(sheetName);
+  }
+
+  detailsSheet.clear();
+
+  var headers = [
+    'Date',
+    'Subject',
+    'Session Hours',
+    'Scheduled Hours',
+    'Soft Pledges',
+    'Hard Pledges',
+    'Estimated Pledges',
+    'Number of Pledges',
+    'Number of Calls',
+    'Number of Pickups'
+  ];
+
+  detailsSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+    .setFontWeight('bold')
+    .setBackground('#4285f4')
+    .setFontColor('#ffffff');
+
+  if (emailDetails.length === 0) {
+    detailsSheet.getRange(2, 1).setValue('No matching emails found.');
+    return;
+  }
+
+  var rows = emailDetails.map(function(detail) {
+    return [
+      detail.date,
+      detail.subject,
+      detail.sessionHours,
+      detail.scheduledHours,
+      detail.softPledges,
+      detail.hardPledges,
+      detail.estimatedPledges,
+      detail.numberOfPledges,
+      detail.numberOfCalls,
+      detail.numberOfPickups
+    ];
+  });
+
+  detailsSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  detailsSheet.getRange(2, 1, rows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm');
+  detailsSheet.getRange(2, 3, rows.length, 2).setNumberFormat('0.00');
+  detailsSheet.getRange(2, 5, rows.length, 3).setNumberFormat('$#,##0.00');
+
+  var totalsRowIndex = rows.length + 2;
+  detailsSheet.getRange(totalsRowIndex, 1).setValue('Totals').setFontWeight('bold');
+  detailsSheet.getRange(totalsRowIndex, 3, 1, 8).setValues([[
+    sumDetailField(emailDetails, 'sessionHours'),
+    sumDetailField(emailDetails, 'scheduledHours'),
+    sumDetailField(emailDetails, 'softPledges'),
+    sumDetailField(emailDetails, 'hardPledges'),
+    sumDetailField(emailDetails, 'estimatedPledges'),
+    sumDetailField(emailDetails, 'numberOfPledges'),
+    sumDetailField(emailDetails, 'numberOfCalls'),
+    sumDetailField(emailDetails, 'numberOfPickups')
+  ]]);
+  detailsSheet.getRange(totalsRowIndex, 3, 1, 2).setNumberFormat('0.00');
+  detailsSheet.getRange(totalsRowIndex, 5, 1, 3).setNumberFormat('$#,##0.00');
+
+  detailsSheet.autoResizeColumns(1, headers.length);
+}
+
+/**
+ * Sums a numeric field from the email detail rows.
+ * @param {Array} emailDetails - Detail rows
+ * @param {string} field - Field name to sum
+ * @return {number} Sum of values
+ */
+function sumDetailField(emailDetails, field) {
+  return emailDetails.reduce(function(total, detail) {
+    return total + (detail[field] || 0);
+  }, 0);
 }
 
 /**
