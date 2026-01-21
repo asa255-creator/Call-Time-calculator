@@ -79,6 +79,8 @@ function showEmailScannerDialog() {
 function scanSentEmails(emailAddress, dateRange) {
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var targetDate = calculateTargetDate(dateRange);
+    var normalizedRecipient = emailAddress.toLowerCase();
 
     // Build the Gmail search query
     var searchQuery = 'to:' + emailAddress + ' in:sent after:' + calculateDateString(dateRange);
@@ -104,6 +106,9 @@ function scanSentEmails(emailAddress, dateRange) {
     threads.forEach(function(thread) {
       var messages = thread.getMessages();
       messages.forEach(function(message) {
+        if (!isSentToRecipient(message, normalizedRecipient, targetDate)) {
+          return;
+        }
         totalEmails++;
         var body = message.getPlainBody();
 
@@ -144,6 +149,35 @@ function scanSentEmails(emailAddress, dateRange) {
       message: 'Error: ' + error.toString()
     };
   }
+}
+
+/**
+ * Determines whether a message is a sent email to the requested recipient.
+ * Filters out received messages in the same thread and older messages.
+ * @param {GmailMessage} message - The Gmail message to validate
+ * @param {string} normalizedRecipient - Lowercased target recipient email
+ * @param {Date} targetDate - Earliest allowable date
+ * @return {boolean} Whether the message should be counted
+ */
+function isSentToRecipient(message, normalizedRecipient, targetDate) {
+  if (targetDate && message.getDate() < targetDate) {
+    return false;
+  }
+
+  var userEmail = Session.getActiveUser().getEmail();
+  if (userEmail) {
+    var fromAddress = message.getFrom().toLowerCase();
+    if (fromAddress.indexOf(userEmail.toLowerCase()) === -1) {
+      return false;
+    }
+  }
+
+  var recipients = [message.getTo(), message.getCc(), message.getBcc()]
+    .filter(function(value) { return value; })
+    .join(',')
+    .toLowerCase();
+
+  return recipients.indexOf(normalizedRecipient) !== -1;
 }
 
 /**
@@ -271,6 +305,30 @@ function calculateDateString(dateRange) {
   var day = String(targetDate.getDate()).padStart(2, '0');
 
   return year + '/' + month + '/' + day;
+}
+
+/**
+ * Calculates the target Date object for Gmail search based on the date range
+ * @param {string} dateRange - Date range (e.g., "7d", "30d", "90d", "1y")
+ * @return {Date} Earliest allowable date
+ */
+function calculateTargetDate(dateRange) {
+  var today = new Date();
+  var targetDate = new Date();
+
+  // Parse the date range
+  var value = parseInt(dateRange);
+  var unit = dateRange.slice(-1).toLowerCase();
+
+  if (unit === 'd') {
+    targetDate.setDate(today.getDate() - value);
+  } else if (unit === 'm') {
+    targetDate.setMonth(today.getMonth() - value);
+  } else if (unit === 'y') {
+    targetDate.setFullYear(today.getFullYear() - value);
+  }
+
+  return targetDate;
 }
 
 /**
