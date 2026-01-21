@@ -91,6 +91,7 @@ function scanSentEmails(emailAddress, dateRange) {
     // Initialize totals
     var totals = {
       sessionHours: 0,
+      scheduledHours: 0,
       softPledges: 0,
       hardPledges: 0,
       estimatedPledges: 0,
@@ -116,6 +117,7 @@ function scanSentEmails(emailAddress, dateRange) {
         if (metrics) {
           emailsWithMetrics++;
           totals.sessionHours += metrics.sessionHours || 0;
+          totals.scheduledHours += metrics.scheduledHours || 0;
           totals.softPledges += metrics.softPledges || 0;
           totals.hardPledges += metrics.hardPledges || 0;
           totals.estimatedPledges += metrics.estimatedPledges || 0;
@@ -151,50 +153,80 @@ function scanSentEmails(emailAddress, dateRange) {
  */
 function parseEmailMetrics(emailBody) {
   var metrics = {};
+  var normalizedBody = emailBody.replace(/\u00a0/g, ' ');
+
+  var extractDecimal = function(body, regex) {
+    var match = body.match(regex);
+    if (!match) {
+      return null;
+    }
+    return parseFloat(match[1].replace(/,/g, ''));
+  };
+
+  var extractInteger = function(body, regex) {
+    var match = body.match(regex);
+    if (!match) {
+      return null;
+    }
+    return parseInt(match[1].replace(/,/g, ''), 10);
+  };
 
   // Pattern for "Session length: X hours" or "Session length: X hrs"
   // Now handles: "2 hours", "2.5 hours", "2hrs", "2 hours (2hrs)", etc.
-  var sessionMatch = emailBody.match(/Session length:\s*(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
-  if (sessionMatch) {
-    metrics.sessionHours = parseFloat(sessionMatch[1]);
+  var sessionLineMatch = normalizedBody.match(/Session length:\s*([^\n\r]+)/i);
+  if (sessionLineMatch) {
+    var sessionLine = sessionLineMatch[1];
+    var completedHours = extractDecimal(sessionLine, /(\d+(?:\.\d+)?)/);
+    if (completedHours !== null) {
+      metrics.sessionHours = completedHours;
+    }
+    var scheduledHours = extractDecimal(sessionLine, /\((?:[^)]*?)(\d+(?:\.\d+)?)/);
+    if (scheduledHours !== null) {
+      metrics.scheduledHours = scheduledHours;
+    }
+  } else {
+    var sessionHours = extractDecimal(normalizedBody, /Session length:\s*(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr)\b/i);
+    if (sessionHours !== null) {
+      metrics.sessionHours = sessionHours;
+    }
   }
 
   // Pattern for "Total in soft pledges: $XXX"
-  // Now handles asterisks and text after: "$250*", "$250* some note", etc.
-  var softPledgeMatch = emailBody.match(/Total in soft pledges:\s*\$(\d+(?:,\d{3})*(?:\.\d+)?)/i);
-  if (softPledgeMatch) {
-    metrics.softPledges = parseFloat(softPledgeMatch[1].replace(/,/g, ''));
+  // Now handles variations like "Soft pledges: $250", "$250*", "$250* some note", etc.
+  var softPledges = extractDecimal(normalizedBody, /(?:Total\s+(?:in\s+)?)?soft pledges:[^0-9$]*\$?(\d+(?:,\d{3})*(?:\.\d+)?)/i);
+  if (softPledges !== null) {
+    metrics.softPledges = softPledges;
   }
 
   // Pattern for "Total in hard pledges: $XXX"
-  var hardPledgeMatch = emailBody.match(/Total in hard pledges:\s*\$(\d+(?:,\d{3})*(?:\.\d+)?)/i);
-  if (hardPledgeMatch) {
-    metrics.hardPledges = parseFloat(hardPledgeMatch[1].replace(/,/g, ''));
+  var hardPledges = extractDecimal(normalizedBody, /(?:Total\s+(?:in\s+)?)?hard pledges:[^0-9$]*\$?(\d+(?:,\d{3})*(?:\.\d+)?)/i);
+  if (hardPledges !== null) {
+    metrics.hardPledges = hardPledges;
   }
 
   // Pattern for "Total estimated pledges: $XXX"
-  var estimatedPledgeMatch = emailBody.match(/Total estimated pledges:\s*\$(\d+(?:,\d{3})*(?:\.\d+)?)/i);
-  if (estimatedPledgeMatch) {
-    metrics.estimatedPledges = parseFloat(estimatedPledgeMatch[1].replace(/,/g, ''));
+  var estimatedPledges = extractDecimal(normalizedBody, /(?:Total\s+)?estimated pledges:[^0-9$]*\$?(\d+(?:,\d{3})*(?:\.\d+)?)/i);
+  if (estimatedPledges !== null) {
+    metrics.estimatedPledges = estimatedPledges;
   }
 
   // Pattern for "Total number of pledges: X"
   // Now handles asterisks and text after: "3*", "3* two of these...", etc.
-  var pledgeCountMatch = emailBody.match(/Total number of pledges:\s*(\d+)/i);
-  if (pledgeCountMatch) {
-    metrics.numberOfPledges = parseInt(pledgeCountMatch[1]);
+  var pledgeCount = extractInteger(normalizedBody, /(?:Total\s+)?number of pledges:[^0-9]*(\d+(?:,\d{3})*)/i);
+  if (pledgeCount !== null) {
+    metrics.numberOfPledges = pledgeCount;
   }
 
   // Pattern for "Number of calls: X"
-  var callsMatch = emailBody.match(/Number of calls:\s*(\d+)/i);
-  if (callsMatch) {
-    metrics.numberOfCalls = parseInt(callsMatch[1]);
+  var calls = extractInteger(normalizedBody, /(?:Number of calls|Calls):[^0-9]*(\d+(?:,\d{3})*)/i);
+  if (calls !== null) {
+    metrics.numberOfCalls = calls;
   }
 
   // Pattern for "Number of pickups: X"
-  var pickupsMatch = emailBody.match(/Number of pickups:\s*(\d+)/i);
-  if (pickupsMatch) {
-    metrics.numberOfPickups = parseInt(pickupsMatch[1]);
+  var pickups = extractInteger(normalizedBody, /(?:Number of pickups|Pickups):[^0-9]*(\d+(?:,\d{3})*)/i);
+  if (pickups !== null) {
+    metrics.numberOfPickups = pickups;
   }
 
   // Debug logging - add email body snippet if no metrics found
@@ -290,7 +322,11 @@ function displayResults(sheet, emailAddress, dateRange, emailCount, emailsWithMe
   row++;
 
   sheet.getRange('A' + row).setValue('Total Session Hours:');
-  sheet.getRange('B' + row).setValue(totals.sessionHours);
+  sheet.getRange('B' + row).setValue(totals.sessionHours).setNumberFormat('0.00');
+  row++;
+
+  sheet.getRange('A' + row).setValue('Total Scheduled Hours:');
+  sheet.getRange('B' + row).setValue(totals.scheduledHours).setNumberFormat('0.00');
   row++;
 
   sheet.getRange('A' + row).setValue('Total Soft Pledges:');
