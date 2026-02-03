@@ -81,7 +81,7 @@ function scanSentEmails(emailAddress, dateRange) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var targetDate = calculateTargetDate(dateRange);
     var normalizedRecipient = emailAddress.toLowerCase();
-    var calendarSummary = getCalendarCallTimeSummary(targetDate, new Date());
+    var calendarSummary = getCalendarCallTimeSummary(targetDate, getRangeEndDate());
     var dailyActuals = {};
 
     // Build the Gmail search query
@@ -406,49 +406,61 @@ function calculateTargetDate(dateRange) {
 }
 
 /**
+ * Builds the inclusive end date for calendar searches.
+ * @return {Date} End date at 23:59:59.999
+ */
+function getRangeEndDate() {
+  var endDate = new Date();
+  endDate.setHours(23, 59, 59, 999);
+  return endDate;
+}
+
+/**
  * Fetches calendar events matching call time and summarizes scheduled hours.
  * @param {Date} startDate - Earliest date
  * @param {Date} endDate - Latest date
  * @return {Object} Calendar summary
  */
 function getCalendarCallTimeSummary(startDate, endDate) {
-  var calendar = CalendarApp.getDefaultCalendar();
-  var events = calendar.getEvents(startDate, endDate);
+  var calendars = CalendarApp.getAllCalendars();
   var totalScheduledHours = 0;
   var totalDeclinedHours = 0;
   var dailyScheduledHours = {};
   var dailyDeclinedHours = {};
 
-  events.forEach(function(event) {
-    var title = event.getTitle() || '';
-    if (title.toLowerCase().indexOf('call time') === -1) {
-      return;
-    }
-    if (event.isAllDayEvent()) {
-      return;
-    }
-    var startTime = event.getStartTime();
-    var endTime = event.getEndTime();
-    var durationHours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-    if (durationHours <= 0) {
-      return;
-    }
+  calendars.forEach(function(calendar) {
+    var events = calendar.getEvents(startDate, endDate);
+    events.forEach(function(event) {
+      var title = event.getTitle() || '';
+      if (title.toLowerCase().indexOf('call time') === -1) {
+        return;
+      }
+      if (event.isAllDayEvent()) {
+        return;
+      }
+      var startTime = event.getStartTime();
+      var endTime = event.getEndTime();
+      var durationHours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+      if (durationHours <= 0) {
+        return;
+      }
 
-    var dateKey = formatDateKey(startTime);
-    dailyScheduledHours[dateKey] = (dailyScheduledHours[dateKey] || 0) + durationHours;
-    totalScheduledHours += durationHours;
+      var dateKey = formatDateKey(startTime);
+      dailyScheduledHours[dateKey] = (dailyScheduledHours[dateKey] || 0) + durationHours;
+      totalScheduledHours += durationHours;
 
-    var declined = event.getMyStatus() === CalendarApp.GuestStatus.NO;
-    var guests = event.getGuestList();
-    if (!declined) {
-      declined = guests.some(function(guest) {
-        return guest.getGuestStatus() === CalendarApp.GuestStatus.NO;
-      });
-    }
-    if (declined) {
-      dailyDeclinedHours[dateKey] = (dailyDeclinedHours[dateKey] || 0) + durationHours;
-      totalDeclinedHours += durationHours;
-    }
+      var declined = event.getMyStatus() === CalendarApp.GuestStatus.NO;
+      var guests = event.getGuestList();
+      if (!declined) {
+        declined = guests.some(function(guest) {
+          return guest.getGuestStatus() === CalendarApp.GuestStatus.NO;
+        });
+      }
+      if (declined) {
+        dailyDeclinedHours[dateKey] = (dailyDeclinedHours[dateKey] || 0) + durationHours;
+        totalDeclinedHours += durationHours;
+      }
+    });
   });
 
   return {

@@ -20,7 +20,7 @@ A Google Apps Script tool that automatically scans your sent emails for call tim
   - Calls per hour
 - 🎨 **Beautiful Results Display**: Clean, formatted output in your Google Sheet
 - 🚀 **Easy to Use**: Simple dropdown menu interface
-- 🗓️ **Calendar Alignment**: Pulls "Call Time" events from your Google Calendar and aligns daily scheduled vs actual hours
+- 🗓️ **Calendar Alignment**: Pulls "Call Time" events from your Google Calendars and aligns daily scheduled vs actual hours
 
 ## Setup Instructions 🛠️
 
@@ -106,7 +106,7 @@ The script will create a formatted report showing:
 - Calls Per Hour
 
 **Calendar Alignment**
-- Daily scheduled hours from Google Calendar events with "Call Time" in the title
+- Daily scheduled hours from Google Calendar events with "Call Time" in the title across your calendars
 - Daily actual hours from email reports
 - Declined hours (when you or another attendee marked "No")
 
