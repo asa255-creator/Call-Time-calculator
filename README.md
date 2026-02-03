@@ -20,6 +20,7 @@ A Google Apps Script tool that automatically scans your sent emails for call tim
   - Calls per hour
 - 🎨 **Beautiful Results Display**: Clean, formatted output in your Google Sheet
 - 🚀 **Easy to Use**: Simple dropdown menu interface
+- 🗓️ **Calendar Alignment**: Pulls "Call Time" events from your Google Calendar and aligns daily scheduled vs actual hours
 
 ## Setup Instructions 🛠️
 
@@ -61,7 +62,7 @@ A Google Apps Script tool that automatically scans your sent emails for call tim
    - Click **Advanced** → **Go to [Your Project Name] (unsafe)**
    - Click **Allow**
 
-This authorization is needed so the script can read your Gmail sent folder.
+This authorization is needed so the script can read your Gmail sent folder and Google Calendar.
 
 ## How to Use 📖
 
@@ -88,6 +89,10 @@ The script will create a formatted report showing:
 
 **Totals**
 - Total Session Hours
+- Actual Session Hours (Attended)
+- Calendar Scheduled Hours
+- No Attendance Hours
+- Scheduled vs Actual (Calendar - Actual)
 - Total Soft Pledges
 - Total Hard Pledges
 - Total Estimated Pledges
@@ -99,6 +104,11 @@ The script will create a formatted report showing:
 - Pickup Rate (percentage)
 - Average Pledge Amount
 - Calls Per Hour
+
+**Calendar Alignment**
+- Daily scheduled hours from Google Calendar events with "Call Time" in the title
+- Daily actual hours from email reports
+- Declined hours (when you or another attendee marked "No")
 
 ### Clearing Results
 
@@ -117,7 +127,10 @@ Total estimated pledges: $250
 Total number of pledges: 3
 Number of calls: 20
 Number of pickups: 4
+Attendance: yes
 ```
+
+If an email includes `Attendance: no`, the session will count toward scheduled hours but not actual hours.
 
 The script is flexible and will find these patterns even if there's other text around them.
 

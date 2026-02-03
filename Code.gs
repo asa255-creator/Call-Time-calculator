@@ -81,6 +81,8 @@ function scanSentEmails(emailAddress, dateRange) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var targetDate = calculateTargetDate(dateRange);
     var normalizedRecipient = emailAddress.toLowerCase();
+    var calendarSummary = getCalendarCallTimeSummary(targetDate, new Date());
+    var dailyActuals = {};
 
     // Build the Gmail search query
     var searchQuery = 'to:' + emailAddress + ' in:sent after:' + calculateDateString(dateRange);
@@ -94,7 +96,11 @@ function scanSentEmails(emailAddress, dateRange) {
     // Initialize totals
     var totals = {
       sessionHours: 0,
+      actualSessionHours: 0,
       scheduledHours: 0,
+      noAttendanceHours: 0,
+      scheduledCalendarHours: calendarSummary.totalScheduledHours,
+      declinedCalendarHours: calendarSummary.totalDeclinedHours,
       softPledges: 0,
       hardPledges: 0,
       estimatedPledges: 0,
@@ -124,8 +130,21 @@ function scanSentEmails(emailAddress, dateRange) {
 
         if (metrics) {
           emailsWithMetrics++;
-          totals.sessionHours += metrics.sessionHours || 0;
-          totals.scheduledHours += metrics.scheduledHours || 0;
+          var sessionHours = metrics.sessionHours || 0;
+          var scheduledHours = metrics.scheduledHours || 0;
+          var scheduledForTotals = scheduledHours;
+          if (metrics.attendanceNo && !scheduledForTotals && sessionHours) {
+            scheduledForTotals = sessionHours;
+          }
+          if (metrics.attendanceNo) {
+            totals.noAttendanceHours += scheduledForTotals || 0;
+          } else {
+            totals.actualSessionHours += sessionHours;
+            totals.sessionHours += sessionHours;
+            var dateKey = formatDateKey(message.getDate());
+            dailyActuals[dateKey] = (dailyActuals[dateKey] || 0) + sessionHours;
+          }
+          totals.scheduledHours += scheduledForTotals || 0;
           totals.softPledges += metrics.softPledges || 0;
           totals.hardPledges += metrics.hardPledges || 0;
           totals.estimatedPledges += metrics.estimatedPledges || 0;
@@ -139,6 +158,7 @@ function scanSentEmails(emailAddress, dateRange) {
     // Display results
     displayResults(sheet, emailAddress, dateRange, totalEmails, emailsWithMetrics, totals);
     displayEmailDetails(emailDetails);
+    displayCalendarAlignment(calendarSummary.dailyScheduledHours, dailyActuals, calendarSummary.dailyDeclinedHours);
 
     return {
       success: true,
@@ -214,7 +234,9 @@ function buildEmailDetail(message, metrics) {
     date: message.getDate(),
     subject: message.getSubject(),
     sessionHours: metrics ? (metrics.sessionHours || 0) : 0,
+    actualSessionHours: metrics ? (metrics.attendanceNo ? 0 : (metrics.sessionHours || 0)) : 0,
     scheduledHours: metrics ? (metrics.scheduledHours || 0) : 0,
+    attendanceStatus: metrics ? (metrics.attendanceNo ? 'No' : 'Yes') : 'Unknown',
     softPledges: metrics ? (metrics.softPledges || 0) : 0,
     hardPledges: metrics ? (metrics.hardPledges || 0) : 0,
     estimatedPledges: metrics ? (metrics.estimatedPledges || 0) : 0,
@@ -307,6 +329,14 @@ function parseEmailMetrics(emailBody) {
     metrics.numberOfPickups = pickups;
   }
 
+  var attendanceMatch = normalizedBody.match(/(?:attendance|attended|present)\s*:\s*(yes|no)\b/i);
+  if (attendanceMatch) {
+    metrics.attendanceNo = attendanceMatch[1].toLowerCase() === 'no';
+    if (metrics.attendanceNo && !metrics.scheduledHours && metrics.sessionHours) {
+      metrics.scheduledHours = metrics.sessionHours;
+    }
+  }
+
   // Debug logging - add email body snippet if no metrics found
   if (Object.keys(metrics).length === 0) {
     Logger.log('No metrics found in email. First 500 chars: ' + emailBody.substring(0, 500));
@@ -376,6 +406,69 @@ function calculateTargetDate(dateRange) {
 }
 
 /**
+ * Fetches calendar events matching call time and summarizes scheduled hours.
+ * @param {Date} startDate - Earliest date
+ * @param {Date} endDate - Latest date
+ * @return {Object} Calendar summary
+ */
+function getCalendarCallTimeSummary(startDate, endDate) {
+  var calendar = CalendarApp.getDefaultCalendar();
+  var events = calendar.getEvents(startDate, endDate);
+  var totalScheduledHours = 0;
+  var totalDeclinedHours = 0;
+  var dailyScheduledHours = {};
+  var dailyDeclinedHours = {};
+
+  events.forEach(function(event) {
+    var title = event.getTitle() || '';
+    if (title.toLowerCase().indexOf('call time') === -1) {
+      return;
+    }
+    if (event.isAllDayEvent()) {
+      return;
+    }
+    var startTime = event.getStartTime();
+    var endTime = event.getEndTime();
+    var durationHours = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+    if (durationHours <= 0) {
+      return;
+    }
+
+    var dateKey = formatDateKey(startTime);
+    dailyScheduledHours[dateKey] = (dailyScheduledHours[dateKey] || 0) + durationHours;
+    totalScheduledHours += durationHours;
+
+    var declined = event.getMyStatus() === CalendarApp.GuestStatus.NO;
+    var guests = event.getGuestList();
+    if (!declined) {
+      declined = guests.some(function(guest) {
+        return guest.getGuestStatus() === CalendarApp.GuestStatus.NO;
+      });
+    }
+    if (declined) {
+      dailyDeclinedHours[dateKey] = (dailyDeclinedHours[dateKey] || 0) + durationHours;
+      totalDeclinedHours += durationHours;
+    }
+  });
+
+  return {
+    totalScheduledHours: totalScheduledHours,
+    totalDeclinedHours: totalDeclinedHours,
+    dailyScheduledHours: dailyScheduledHours,
+    dailyDeclinedHours: dailyDeclinedHours
+  };
+}
+
+/**
+ * Formats a date into a consistent key for daily grouping.
+ * @param {Date} date - Date to format
+ * @return {string} Date key
+ */
+function formatDateKey(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+/**
  * Displays results in the spreadsheet
  * @param {Sheet} sheet - The active sheet
  * @param {string} emailAddress - The searched email address
@@ -427,8 +520,24 @@ function displayResults(sheet, emailAddress, dateRange, emailCount, emailsWithMe
   sheet.getRange('B' + row).setValue(totals.sessionHours).setNumberFormat('0.00');
   row++;
 
+  sheet.getRange('A' + row).setValue('Actual Session Hours (Attended):');
+  sheet.getRange('B' + row).setValue(totals.actualSessionHours).setNumberFormat('0.00');
+  row++;
+
   sheet.getRange('A' + row).setValue('Total Scheduled Hours:');
   sheet.getRange('B' + row).setValue(totals.scheduledHours).setNumberFormat('0.00');
+  row++;
+
+  sheet.getRange('A' + row).setValue('Calendar Scheduled Hours:');
+  sheet.getRange('B' + row).setValue(totals.scheduledCalendarHours).setNumberFormat('0.00');
+  row++;
+
+  sheet.getRange('A' + row).setValue('No Attendance Hours (Email/Calendar):');
+  sheet.getRange('B' + row).setValue(totals.noAttendanceHours + totals.declinedCalendarHours).setNumberFormat('0.00');
+  row++;
+
+  sheet.getRange('A' + row).setValue('Scheduled vs Actual (Calendar - Actual):');
+  sheet.getRange('B' + row).setValue(totals.scheduledCalendarHours - totals.actualSessionHours).setNumberFormat('0.00');
   row++;
 
   sheet.getRange('A' + row).setValue('Total Soft Pledges:');
@@ -503,7 +612,9 @@ function displayEmailDetails(emailDetails) {
     'Date',
     'Subject',
     'Session Hours',
+    'Actual Session Hours',
     'Scheduled Hours',
+    'Attendance',
     'Soft Pledges',
     'Hard Pledges',
     'Estimated Pledges',
@@ -527,7 +638,9 @@ function displayEmailDetails(emailDetails) {
       detail.date,
       detail.subject,
       detail.sessionHours,
+      detail.actualSessionHours,
       detail.scheduledHours,
+      detail.attendanceStatus,
       detail.softPledges,
       detail.hardPledges,
       detail.estimatedPledges,
@@ -539,14 +652,16 @@ function displayEmailDetails(emailDetails) {
 
   detailsSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
   detailsSheet.getRange(2, 1, rows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm');
-  detailsSheet.getRange(2, 3, rows.length, 2).setNumberFormat('0.00');
-  detailsSheet.getRange(2, 5, rows.length, 3).setNumberFormat('$#,##0.00');
+  detailsSheet.getRange(2, 3, rows.length, 3).setNumberFormat('0.00');
+  detailsSheet.getRange(2, 7, rows.length, 3).setNumberFormat('$#,##0.00');
 
   var totalsRowIndex = rows.length + 2;
   detailsSheet.getRange(totalsRowIndex, 1).setValue('Totals').setFontWeight('bold');
-  detailsSheet.getRange(totalsRowIndex, 3, 1, 8).setValues([[
+  detailsSheet.getRange(totalsRowIndex, 3, 1, 9).setValues([[
     sumDetailField(emailDetails, 'sessionHours'),
+    sumDetailField(emailDetails, 'actualSessionHours'),
     sumDetailField(emailDetails, 'scheduledHours'),
+    '',
     sumDetailField(emailDetails, 'softPledges'),
     sumDetailField(emailDetails, 'hardPledges'),
     sumDetailField(emailDetails, 'estimatedPledges'),
@@ -554,10 +669,69 @@ function displayEmailDetails(emailDetails) {
     sumDetailField(emailDetails, 'numberOfCalls'),
     sumDetailField(emailDetails, 'numberOfPickups')
   ]]);
-  detailsSheet.getRange(totalsRowIndex, 3, 1, 2).setNumberFormat('0.00');
-  detailsSheet.getRange(totalsRowIndex, 5, 1, 3).setNumberFormat('$#,##0.00');
+  detailsSheet.getRange(totalsRowIndex, 3, 1, 3).setNumberFormat('0.00');
+  detailsSheet.getRange(totalsRowIndex, 7, 1, 3).setNumberFormat('$#,##0.00');
 
   detailsSheet.autoResizeColumns(1, headers.length);
+}
+
+/**
+ * Displays daily calendar alignment data.
+ * @param {Object} dailyScheduledHours - Calendar scheduled hours per date
+ * @param {Object} dailyActuals - Actual session hours per date
+ * @param {Object} dailyDeclinedHours - Calendar declined hours per date
+ */
+function displayCalendarAlignment(dailyScheduledHours, dailyActuals, dailyDeclinedHours) {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetName = 'Calendar Alignment';
+  var alignmentSheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!alignmentSheet) {
+    alignmentSheet = spreadsheet.insertSheet(sheetName);
+  }
+
+  alignmentSheet.clear();
+
+  var headers = [
+    'Date',
+    'Scheduled Hours (Calendar)',
+    'Actual Hours (Emails)',
+    'Declined Hours (Calendar)',
+    'Scheduled vs Actual'
+  ];
+
+  alignmentSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+    .setFontWeight('bold')
+    .setBackground('#4285f4')
+    .setFontColor('#ffffff');
+
+  var dateKeys = Object.keys(dailyScheduledHours)
+    .concat(Object.keys(dailyActuals))
+    .concat(Object.keys(dailyDeclinedHours))
+    .filter(function(value, index, array) { return array.indexOf(value) === index; })
+    .sort();
+
+  if (dateKeys.length === 0) {
+    alignmentSheet.getRange(2, 1).setValue('No calendar events or matching emails found.');
+    return;
+  }
+
+  var rows = dateKeys.map(function(dateKey) {
+    var scheduled = dailyScheduledHours[dateKey] || 0;
+    var actual = dailyActuals[dateKey] || 0;
+    var declined = dailyDeclinedHours[dateKey] || 0;
+    return [
+      dateKey,
+      scheduled,
+      actual,
+      declined,
+      scheduled - actual
+    ];
+  });
+
+  alignmentSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  alignmentSheet.getRange(2, 2, rows.length, 4).setNumberFormat('0.00');
+  alignmentSheet.autoResizeColumns(1, headers.length);
 }
 
 /**
