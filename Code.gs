@@ -81,7 +81,7 @@ function scanSentEmails(emailAddress, dateRange) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var targetDate = calculateTargetDate(dateRange);
     var normalizedRecipient = emailAddress.toLowerCase();
-    var calendarSummary = getCalendarCallTimeSummary(targetDate, getRangeEndDate());
+    var calendarSummary = getCalendarCallTimeSummary(targetDate, getRangeEndDate(), normalizedRecipient);
     var dailyActuals = {};
 
     // Build the Gmail search query
@@ -419,9 +419,10 @@ function getRangeEndDate() {
  * Fetches calendar events matching call time and summarizes scheduled hours.
  * @param {Date} startDate - Earliest date
  * @param {Date} endDate - Latest date
+ * @param {string} normalizedRecipient - Lowercased recipient email to match attendees
  * @return {Object} Calendar summary
  */
-function getCalendarCallTimeSummary(startDate, endDate) {
+function getCalendarCallTimeSummary(startDate, endDate, normalizedRecipient) {
   var calendars = CalendarApp.getAllCalendars();
   var totalScheduledHours = 0;
   var totalDeclinedHours = 0;
@@ -433,6 +434,9 @@ function getCalendarCallTimeSummary(startDate, endDate) {
     events.forEach(function(event) {
       var title = event.getTitle() || '';
       if (!/call\s*time/i.test(title)) {
+        return;
+      }
+      if (normalizedRecipient && !eventIncludesRecipient(event, normalizedRecipient)) {
         return;
       }
       if (event.isAllDayEvent()) {
@@ -469,6 +473,19 @@ function getCalendarCallTimeSummary(startDate, endDate) {
     dailyScheduledHours: dailyScheduledHours,
     dailyDeclinedHours: dailyDeclinedHours
   };
+}
+
+/**
+ * Checks whether the calendar event includes the recipient as a guest.
+ * @param {CalendarEvent} event - Calendar event
+ * @param {string} normalizedRecipient - Lowercased recipient email
+ * @return {boolean} Whether the recipient is on the event
+ */
+function eventIncludesRecipient(event, normalizedRecipient) {
+  var guests = event.getGuestList();
+  return guests.some(function(guest) {
+    return guest.getEmail().toLowerCase() === normalizedRecipient;
+  });
 }
 
 /**
