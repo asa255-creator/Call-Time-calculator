@@ -428,7 +428,7 @@ function getCalendarCallTimeSummary(startDate, endDate, normalizedRecipient) {
   var totalDeclinedHours = 0;
   var dailyScheduledHours = {};
   var dailyDeclinedHours = {};
-  var seenEventIds = {};
+  var seenEventKeys = {};
 
   calendars.forEach(function(calendar) {
     var events = calendar.getEvents(startDate, endDate);
@@ -440,13 +440,6 @@ function getCalendarCallTimeSummary(startDate, endDate, normalizedRecipient) {
       if (normalizedRecipient && !eventIncludesRecipient(event, normalizedRecipient)) {
         return;
       }
-      var eventId = event.getId();
-      if (eventId && seenEventIds[eventId]) {
-        return;
-      }
-      if (eventId) {
-        seenEventIds[eventId] = true;
-      }
       if (event.isAllDayEvent()) {
         return;
       }
@@ -456,6 +449,11 @@ function getCalendarCallTimeSummary(startDate, endDate, normalizedRecipient) {
       if (durationHours <= 0) {
         return;
       }
+      var eventKey = buildEventDedupKey(title, startTime, endTime);
+      if (seenEventKeys[eventKey]) {
+        return;
+      }
+      seenEventKeys[eventKey] = true;
 
       var dateKey = formatDateKey(startTime);
       dailyScheduledHours[dateKey] = (dailyScheduledHours[dateKey] || 0) + durationHours;
@@ -494,6 +492,22 @@ function eventIncludesRecipient(event, normalizedRecipient) {
   return guests.some(function(guest) {
     return guest.getEmail().toLowerCase() === normalizedRecipient;
   });
+}
+
+/**
+ * Builds a deduplication key for calendar events across calendars.
+ * @param {string} title - Event title
+ * @param {Date} startTime - Event start time
+ * @param {Date} endTime - Event end time
+ * @return {string} Deduplication key
+ */
+function buildEventDedupKey(title, startTime, endTime) {
+  var baseKey = [
+    title.toLowerCase(),
+    startTime.getTime(),
+    endTime.getTime()
+  ].join('|');
+  return baseKey;
 }
 
 /**
