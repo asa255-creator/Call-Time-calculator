@@ -432,7 +432,7 @@ function getCalendarCallTimeSummary(startDate, endDate) {
     var events = calendar.getEvents(startDate, endDate);
     events.forEach(function(event) {
       var title = event.getTitle() || '';
-      if (title.toLowerCase().indexOf('call time') === -1) {
+      if (!/call\s*time/i.test(title)) {
         return;
       }
       if (event.isAllDayEvent()) {
