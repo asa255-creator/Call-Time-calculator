@@ -437,6 +437,9 @@ function getCalendarCallTimeSummary(startDate, endDate, normalizedRecipient) {
       if (!/call\s*time/i.test(title)) {
         return;
       }
+      if (/\bonboarding\b/i.test(title)) {
+        return;
+      }
       if (normalizedRecipient && !eventIncludesRecipient(event, normalizedRecipient)) {
         return;
       }
