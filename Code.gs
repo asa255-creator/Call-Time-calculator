@@ -79,6 +79,8 @@ function showEmailScannerDialog() {
 function scanSentEmails(emailAddress, dateRange) {
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var targetDate = calculateTargetDate(dateRange);
+    var normalizedRecipient = emailAddress.toLowerCase();
 
     // Build the Gmail search query
     var searchQuery = 'to:' + emailAddress + ' in:sent after:' + calculateDateString(dateRange);
@@ -87,6 +89,7 @@ function scanSentEmails(emailAddress, dateRange) {
     var threads = GmailApp.search(searchQuery);
     var totalEmails = 0;
     var emailsWithMetrics = 0;
+    var emailDetails = [];
 
     // Initialize totals
     var totals = {
@@ -104,6 +107,9 @@ function scanSentEmails(emailAddress, dateRange) {
     threads.forEach(function(thread) {
       var messages = thread.getMessages();
       messages.forEach(function(message) {
+        if (!isSentToRecipient(message, normalizedRecipient, targetDate)) {
+          return;
+        }
         totalEmails++;
         var body = message.getPlainBody();
 
@@ -113,6 +119,8 @@ function scanSentEmails(emailAddress, dateRange) {
         Logger.log('First 1000 chars: ' + body.substring(0, 1000));
 
         var metrics = parseEmailMetrics(body);
+
+        emailDetails.push(buildEmailDetail(message, metrics));
 
         if (metrics) {
           emailsWithMetrics++;
@@ -130,6 +138,7 @@ function scanSentEmails(emailAddress, dateRange) {
 
     // Display results
     displayResults(sheet, emailAddress, dateRange, totalEmails, emailsWithMetrics, totals);
+    displayEmailDetails(emailDetails);
 
     return {
       success: true,
@@ -144,6 +153,75 @@ function scanSentEmails(emailAddress, dateRange) {
       message: 'Error: ' + error.toString()
     };
   }
+}
+
+/**
+ * Determines whether a message is a sent email to the requested recipient.
+ * Filters out received messages in the same thread and older messages.
+ * @param {GmailMessage} message - The Gmail message to validate
+ * @param {string} normalizedRecipient - Lowercased target recipient email
+ * @param {Date} targetDate - Earliest allowable date
+ * @return {boolean} Whether the message should be counted
+ */
+function isSentToRecipient(message, normalizedRecipient, targetDate) {
+  if (targetDate && message.getDate() < targetDate) {
+    return false;
+  }
+
+  var subject = message.getSubject() || '';
+  if (/^\s*(re|fw|fwd)\s*:/i.test(subject)) {
+    return false;
+  }
+
+  var userEmail = '';
+  try {
+    userEmail = Session.getActiveUser().getEmail();
+  } catch (error) {
+    userEmail = '';
+  }
+  if (!userEmail) {
+    try {
+      userEmail = Session.getEffectiveUser().getEmail();
+    } catch (error) {
+      userEmail = '';
+    }
+  }
+  var fromAddress = message.getFrom().toLowerCase();
+  if (userEmail) {
+    if (fromAddress.indexOf(userEmail.toLowerCase()) === -1) {
+      return false;
+    }
+  } else if (fromAddress.indexOf(normalizedRecipient) !== -1) {
+    return false;
+  }
+
+  var recipients = [message.getTo(), message.getCc(), message.getBcc()]
+    .filter(function(value) { return value; })
+    .join(',')
+    .toLowerCase();
+
+  return recipients.indexOf(normalizedRecipient) !== -1;
+}
+
+/**
+ * Builds a detail row for the email details sheet.
+ * @param {GmailMessage} message - The Gmail message
+ * @param {Object|null} metrics - Parsed metrics
+ * @return {Object} Row data for the details sheet
+ */
+function buildEmailDetail(message, metrics) {
+  return {
+    date: message.getDate(),
+    subject: message.getSubject(),
+    sessionHours: metrics ? (metrics.sessionHours || 0) : 0,
+    scheduledHours: metrics ? (metrics.scheduledHours || 0) : 0,
+    softPledges: metrics ? (metrics.softPledges || 0) : 0,
+    hardPledges: metrics ? (metrics.hardPledges || 0) : 0,
+    estimatedPledges: metrics ? (metrics.estimatedPledges || 0) : 0,
+    numberOfPledges: metrics ? (metrics.numberOfPledges || 0) : 0,
+    numberOfCalls: metrics ? (metrics.numberOfCalls || 0) : 0,
+    numberOfPickups: metrics ? (metrics.numberOfPickups || 0) : 0
+  };
 }
 
 /**
@@ -274,6 +352,30 @@ function calculateDateString(dateRange) {
 }
 
 /**
+ * Calculates the target Date object for Gmail search based on the date range
+ * @param {string} dateRange - Date range (e.g., "7d", "30d", "90d", "1y")
+ * @return {Date} Earliest allowable date
+ */
+function calculateTargetDate(dateRange) {
+  var today = new Date();
+  var targetDate = new Date();
+
+  // Parse the date range
+  var value = parseInt(dateRange);
+  var unit = dateRange.slice(-1).toLowerCase();
+
+  if (unit === 'd') {
+    targetDate.setDate(today.getDate() - value);
+  } else if (unit === 'm') {
+    targetDate.setMonth(today.getMonth() - value);
+  } else if (unit === 'y') {
+    targetDate.setFullYear(today.getFullYear() - value);
+  }
+
+  return targetDate;
+}
+
+/**
  * Displays results in the spreadsheet
  * @param {Sheet} sheet - The active sheet
  * @param {string} emailAddress - The searched email address
@@ -380,6 +482,94 @@ function displayResults(sheet, emailAddress, dateRange, emailCount, emailsWithMe
   row += 2;
   sheet.getRange('A' + row).setValue('Last Updated:');
   sheet.getRange('B' + row).setValue(new Date().toLocaleString());
+}
+
+/**
+ * Displays per-email details in a secondary sheet.
+ * @param {Array} emailDetails - Array of per-email metrics
+ */
+function displayEmailDetails(emailDetails) {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetName = 'Email Details';
+  var detailsSheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!detailsSheet) {
+    detailsSheet = spreadsheet.insertSheet(sheetName);
+  }
+
+  detailsSheet.clear();
+
+  var headers = [
+    'Date',
+    'Subject',
+    'Session Hours',
+    'Scheduled Hours',
+    'Soft Pledges',
+    'Hard Pledges',
+    'Estimated Pledges',
+    'Number of Pledges',
+    'Number of Calls',
+    'Number of Pickups'
+  ];
+
+  detailsSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+    .setFontWeight('bold')
+    .setBackground('#4285f4')
+    .setFontColor('#ffffff');
+
+  if (emailDetails.length === 0) {
+    detailsSheet.getRange(2, 1).setValue('No matching emails found.');
+    return;
+  }
+
+  var rows = emailDetails.map(function(detail) {
+    return [
+      detail.date,
+      detail.subject,
+      detail.sessionHours,
+      detail.scheduledHours,
+      detail.softPledges,
+      detail.hardPledges,
+      detail.estimatedPledges,
+      detail.numberOfPledges,
+      detail.numberOfCalls,
+      detail.numberOfPickups
+    ];
+  });
+
+  detailsSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  detailsSheet.getRange(2, 1, rows.length, 1).setNumberFormat('yyyy-mm-dd hh:mm');
+  detailsSheet.getRange(2, 3, rows.length, 2).setNumberFormat('0.00');
+  detailsSheet.getRange(2, 5, rows.length, 3).setNumberFormat('$#,##0.00');
+
+  var totalsRowIndex = rows.length + 2;
+  detailsSheet.getRange(totalsRowIndex, 1).setValue('Totals').setFontWeight('bold');
+  detailsSheet.getRange(totalsRowIndex, 3, 1, 8).setValues([[
+    sumDetailField(emailDetails, 'sessionHours'),
+    sumDetailField(emailDetails, 'scheduledHours'),
+    sumDetailField(emailDetails, 'softPledges'),
+    sumDetailField(emailDetails, 'hardPledges'),
+    sumDetailField(emailDetails, 'estimatedPledges'),
+    sumDetailField(emailDetails, 'numberOfPledges'),
+    sumDetailField(emailDetails, 'numberOfCalls'),
+    sumDetailField(emailDetails, 'numberOfPickups')
+  ]]);
+  detailsSheet.getRange(totalsRowIndex, 3, 1, 2).setNumberFormat('0.00');
+  detailsSheet.getRange(totalsRowIndex, 5, 1, 3).setNumberFormat('$#,##0.00');
+
+  detailsSheet.autoResizeColumns(1, headers.length);
+}
+
+/**
+ * Sums a numeric field from the email detail rows.
+ * @param {Array} emailDetails - Detail rows
+ * @param {string} field - Field name to sum
+ * @return {number} Sum of values
+ */
+function sumDetailField(emailDetails, field) {
+  return emailDetails.reduce(function(total, detail) {
+    return total + (detail[field] || 0);
+  }, 0);
 }
 
 /**
