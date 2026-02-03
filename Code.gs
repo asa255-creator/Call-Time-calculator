@@ -428,6 +428,7 @@ function getCalendarCallTimeSummary(startDate, endDate, normalizedRecipient) {
   var totalDeclinedHours = 0;
   var dailyScheduledHours = {};
   var dailyDeclinedHours = {};
+  var seenEventIds = {};
 
   calendars.forEach(function(calendar) {
     var events = calendar.getEvents(startDate, endDate);
@@ -438,6 +439,13 @@ function getCalendarCallTimeSummary(startDate, endDate, normalizedRecipient) {
       }
       if (normalizedRecipient && !eventIncludesRecipient(event, normalizedRecipient)) {
         return;
+      }
+      var eventId = event.getId();
+      if (eventId && seenEventIds[eventId]) {
+        return;
+      }
+      if (eventId) {
+        seenEventIds[eventId] = true;
       }
       if (event.isAllDayEvent()) {
         return;
