@@ -696,7 +696,7 @@ function displayEmailDetails(emailDetails) {
 
   var totalsRowIndex = rows.length + 2;
   detailsSheet.getRange(totalsRowIndex, 1).setValue('Totals').setFontWeight('bold');
-  detailsSheet.getRange(totalsRowIndex, 3, 1, 9).setValues([[
+  detailsSheet.getRange(totalsRowIndex, 3, 1, 10).setValues([[
     sumDetailField(emailDetails, 'sessionHours'),
     sumDetailField(emailDetails, 'actualSessionHours'),
     sumDetailField(emailDetails, 'scheduledHours'),
