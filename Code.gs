@@ -528,28 +528,16 @@ function displayResults(sheet, emailAddress, dateRange, emailCount, emailsWithMe
   sheet.getRange('A' + row).setValue('TOTALS').setFontWeight('bold').setFontSize(12);
   row++;
 
-  sheet.getRange('A' + row).setValue('Total Session Hours:');
-  sheet.getRange('B' + row).setValue(totals.sessionHours).setNumberFormat('0.00');
-  row++;
-
-  sheet.getRange('A' + row).setValue('Actual Session Hours (Attended):');
+  sheet.getRange('A' + row).setValue('Total Session Hours (Email Actuals):');
   sheet.getRange('B' + row).setValue(totals.actualSessionHours).setNumberFormat('0.00');
   row++;
 
-  sheet.getRange('A' + row).setValue('Total Scheduled Hours:');
-  sheet.getRange('B' + row).setValue(totals.scheduledHours).setNumberFormat('0.00');
-  row++;
-
-  sheet.getRange('A' + row).setValue('Calendar Scheduled Hours:');
-  sheet.getRange('B' + row).setValue(totals.scheduledCalendarHours).setNumberFormat('0.00');
-  row++;
-
-  sheet.getRange('A' + row).setValue('No Attendance Hours (Email/Calendar):');
-  sheet.getRange('B' + row).setValue(totals.noAttendanceHours + totals.declinedCalendarHours).setNumberFormat('0.00');
-  row++;
-
-  sheet.getRange('A' + row).setValue('Scheduled vs Actual (Calendar - Actual):');
-  sheet.getRange('B' + row).setValue(totals.scheduledCalendarHours - totals.actualSessionHours).setNumberFormat('0.00');
+  var scheduledTotal = totals.actualSessionHours;
+  if (totals.scheduledCalendarHours > totals.actualSessionHours) {
+    scheduledTotal += (totals.scheduledCalendarHours - totals.actualSessionHours);
+  }
+  sheet.getRange('A' + row).setValue('Scheduled Session Hours (Actuals + Missing Calendar):');
+  sheet.getRange('B' + row).setValue(scheduledTotal).setNumberFormat('0.00');
   row++;
 
   sheet.getRange('A' + row).setValue('Total Soft Pledges:');
@@ -724,8 +712,7 @@ function displayCalendarAlignment(dailyScheduledHours, dailyActuals, dailyDeclin
     .sort();
 
   if (dateKeys.length === 0) {
-    alignmentSheet.getRange(2, 1).setValue('No calendar events or matching emails found.');
-    return;
+    dateKeys = ['No data'];
   }
 
   var rows = dateKeys.map(function(dateKey) {

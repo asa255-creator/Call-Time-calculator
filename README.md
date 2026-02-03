@@ -88,11 +88,8 @@ The script will create a formatted report showing:
 - Number of emails found
 
 **Totals**
-- Total Session Hours
-- Actual Session Hours (Attended)
-- Calendar Scheduled Hours
-- No Attendance Hours
-- Scheduled vs Actual (Calendar - Actual)
+- Total Session Hours (Email Actuals)
+- Scheduled Session Hours (Actuals + Missing Calendar)
 - Total Soft Pledges
 - Total Hard Pledges
 - Total Estimated Pledges
